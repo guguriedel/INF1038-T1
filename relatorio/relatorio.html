@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Relatório Trabalho 1 INF1038</title>
+<style>
+  @page { size: A4; margin: 22mm 20mm 22mm 20mm; }
+  body { font-family: "Times New Roman", Georgia, serif; font-size: 11.5pt; line-height: 1.4; color: #000; background: #fff; }
+  h1 { font-size: 17pt; margin: 0 0 6px; }
+  h2 { font-size: 13pt; margin: 18px 0 6px; }
+  h3 { font-size: 11.5pt; margin: 12px 0 4px; font-style: italic; font-weight: normal; }
+  p { margin: 0 0 7px; text-align: justify; text-indent: 1.2em; }
+  p.ni { text-indent: 0; }
+  ul, ol { margin: 4px 0 8px; padding-left: 22px; }
+  li { margin: 2px 0; text-align: justify; }
+  table { border-collapse: collapse; margin: 8px auto 10px; font-size: 10pt; break-inside: avoid; page-break-inside: avoid; }
+  tr { break-inside: avoid; }
+  th, td { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 3px 9px; text-align: center; }
+  th { font-weight: bold; }
+  td.l, th.l { text-align: left; }
+  td { white-space: nowrap; }
+  caption { caption-side: top; font-size: 10pt; margin-bottom: 4px; }
+  figure { margin: 10px 0; text-align: center; break-inside: avoid; page-break-inside: avoid; }
+  figure img { max-width: 100%; }
+  figcaption { font-size: 10pt; margin-top: 3px; }
+  .capa { text-align: center; padding-top: 170px; }
+  .capa p { text-indent: 0; text-align: center; font-size: 12.5pt; margin: 4px 0; }
+  .quebra { page-break-before: always; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 10pt; }
+  .duas { display: flex; gap: 12px; align-items: flex-start; break-inside: avoid; page-break-inside: avoid; }
+  .duas figure { flex: 1; }
+  h2, h3 { break-after: avoid; page-break-after: avoid; }
+</style>
+</head>
+<body>
+
+<div class="capa">
+  <p>PUC-Rio</p>
+  <p>INF1038 · Trabalho 1</p>
+  <h1 style="margin-top:110px">Previsão de doença cardíaca</h1>
+  <p>Base <i>Heart Failure Prediction</i> (Kaggle)</p>
+  <p style="margin-top:110px">Aviv Cozer Aharon · 2211745</p>
+  <p>Gustavo Maia Riedel · 2210375</p>
+  <p style="margin-top:90px">Outubro de 2026</p>
+</div>
+
+<h2 class="quebra">1. A base</h2>
+<p>A ideia do trabalho é prever se um paciente tem doença cardíaca usando exames simples. A gente escolheu a base
+<i>Heart Failure Prediction</i> do Kaggle, que junta cinco bases antigas da UCI e tem 918 pacientes com 11 atributos:
+idade, sexo, tipo de dor no peito, pressão, colesterol, glicemia, ECG em repouso e alguns dados do teste de esforço
+(frequência máxima, angina no exercício, <code>Oldpeak</code> e inclinação do segmento ST). O alvo é
+<code>HeartDisease</code> (1 = doente).</p>
+<p>Achamos que valia a pena usar: não tem valores nulos nem linhas repetidas, e as classes estão bem equilibradas
+(508 doentes e 410 normais). O único problema sério é que 172 pacientes (19%) estão com colesterol igual a zero e um
+está com pressão zero, o que é impossível. Na prática isso é dado faltante.</p>
+
+<h2>2. Limpeza</h2>
+<p>Uma coisa curiosa: dos pacientes com colesterol zero, 88% são doentes, contra 48% no resto. Fomos ver e quase
+todos esses zeros vêm da base da Suíça, que não mediu colesterol e tinha muito doente. Então o zero não diz nada
+sobre o colesterol, só sobre de onde o paciente veio.</p>
+<p>O que fizemos: tiramos a linha com pressão zero e trocamos os zeros de colesterol pela mediana (calculada só no
+treino, dentro do pipeline). Não quisemos criar uma coluna "colesterol faltando", porque aí o modelo ia aprender
+essa coincidência da coleta. Os outliers (pressão até 200, colesterol até 603) e os poucos <code>Oldpeak</code>
+negativos fazem sentido clinicamente, então deixamos.</p>
+
+<h2>3. Análise exploratória</h2>
+<figure><img src="../figs/02_univariada_numericas.png" style="width:100%">
+<figcaption>Figura 1. Distribuição dos atributos numéricos.</figcaption></figure>
+<p>Nenhum atributo numérico é normal (teste de Shapiro), então usamos testes não paramétricos. Colesterol e
+<code>Oldpeak</code> são bem assimétricos. Um ponto que limita o trabalho: 79% dos pacientes são homens.</p>
+
+<figure><img src="../figs/04_bivariada_numericas.png" style="width:100%">
+<figcaption>Figura 2. Atributos numéricos separados por classe.</figcaption></figure>
+
+<table>
+<caption>Tabela 1. Força da associação dos atributos categóricos com a doença.</caption>
+<tr><th class="l">Atributo</th><th>V de Cramér</th></tr>
+<tr><td class="l">ST_Slope</td><td>0,62</td></tr>
+<tr><td class="l">ChestPainType</td><td>0,54</td></tr>
+<tr><td class="l">ExerciseAngina</td><td>0,49</td></tr>
+<tr><td class="l">Sex</td><td>0,30</td></tr>
+<tr><td class="l">FastingBS</td><td>0,27</td></tr>
+<tr><td class="l">RestingECG</td><td>0,11</td></tr>
+</table>
+
+<p>O que mais separa doente de não doente é o teste de esforço: ST plano ou descendente, angina no exercício,
+<code>Oldpeak</code> alto e frequência máxima baixa. O que mais surpreendeu foi o tipo de dor: os pacientes
+<b>sem dor</b> no peito são os que mais têm doença. Parece estranho, mas existe a isquemia silenciosa, e também
+quem faz esses exames sem sintoma provavelmente foi mandado por outro motivo.</p>
+<p>Pressão e colesterol deram "significativos" no teste estatístico, mas a diferença é mínima (mediana de
+colesterol 232 contra 246, por exemplo). Com quase mil pacientes, qualquer diferença pequena vira significativa.</p>
+
+<h2>4. Análise multivariada</h2>
+<div class="duas">
+<figure><img src="../figs/06_correlacao.png"><figcaption>Figura 3. Correlação de Spearman.</figcaption></figure>
+<figure><img src="../figs/08_pca_2d.png"><figcaption>Figura 4. Pacientes no PCA (1 = doente).</figcaption></figure>
+</div>
+<p>Depois do one-hot ficamos com 15 atributos. As variáveis do teste de esforço são correlacionadas entre si, mas
+não tem nada muito redundante (o VIF só chega perto de 5 nas duas dummies de <code>ST_Slope</code>). No PCA dá para
+ver as duas classes quase separadas, com uma parte misturada no meio. Daí já dava para esperar duas coisas: que um
+modelo linear fosse funcionar bem, e que a acurácia ficasse perto de 85%, não 99%.</p>
+
+<h2>5. Seleção de atributos</h2>
+<p>Separamos 80% para treino e 20% para teste, e o teste só foi usado no final. Testamos os métodos vistos em aula:
+filtro (ANOVA), wrapper (RFE com Regressão Logística), embutido (Logística com L1) e PCA. Tudo foi avaliado com
+validação cruzada (5 folds, repetida 10 vezes).</p>
+<figure><img src="../figs/10_curva_k.png" style="width:62%">
+<figcaption>Figura 5. AUC conforme aumenta o número de atributos.</figcaption></figure>
+<table>
+<caption>Tabela 2. Comparação dos métodos (AUC na validação cruzada).</caption>
+<tr><th class="l">Método</th><th>Logística</th><th>SVM RBF</th></tr>
+<tr><td class="l">Todos (15)</td><td>0,916</td><td>0,916</td></tr>
+<tr><td class="l">Filtro ANOVA (10)</td><td>0,913</td><td>0,909</td></tr>
+<tr><td class="l">RFE (12)</td><td>0,917</td><td>0,914</td></tr>
+<tr><td class="l">L1</td><td>0,916</td><td>0,915</td></tr>
+<tr><td class="l">PCA (11 comp.)</td><td>0,912</td><td>0,914</td></tr>
+</table>
+<p>Deu tudo praticamente igual. Com só 3 atributos já chega em 0,87 de AUC, e depois de uns 10 a curva para de
+subir. Como nenhum método ganhou, escolhemos pelo mais simples: os 12 do RFE, que tiram idade, pressão e
+colesterol. Os outros métodos também apontavam esses três como os menos úteis. O PCA ficou de fora porque não dá para
+interpretar as componentes.</p>
+<p>A idade foi o caso mais interessante, porque sozinha ela é bem significativa. Só que pacientes mais velhos já
+têm frequência máxima menor e mais angina, então quando o teste de esforço está no modelo a idade não acrescenta
+nada.</p>
+
+<h2>6. Modelos</h2>
+<p><b>Regressão Linear.</b> Mesmo não sendo feita para isso, usando corte em 0,5 ela acertou 87,5% no teste. O
+problema é que 30 das 184 previsões saíram fora de [0, 1], então não dá para ler como probabilidade. Por isso ela
+não é a escolha certa para classificação.</p>
+<p><b>Regressão Logística.</b> Olhando os coeficientes, ser homem multiplica a chance de doença por uns 4,4,
+glicemia alta por 3,7 e angina no exercício por 2,3. Quem sente algum tipo de dor tem bem menos chance que o
+assintomático (odds ratio de 0,17). O ECG em repouso não fez diferença.</p>
+<p><b>SVM.</b> Testamos SVM linear e com kernel RBF, ajustando os parâmetros com GridSearch. Na validação cruzada os
+três modelos ficaram empatados (AUC entre 0,916 e 0,923). O SVM RBF escolheu um gamma bem pequeno, que deixa a
+fronteira quase reta, ou seja, ele mesmo "concluiu" que o problema é linear.</p>
+
+<h2>7. Resultados no teste</h2>
+<table>
+<caption>Tabela 3. Resultados no conjunto de teste (184 pacientes).</caption>
+<tr><th class="l">Modelo</th><th>Acurácia</th><th>Recall</th><th>AUC</th></tr>
+<tr><td class="l">Regressão Logística</td><td>0,870</td><td>0,892</td><td>0,937</td></tr>
+<tr><td class="l">SVM linear</td><td>0,853</td><td>0,882</td><td>0,936</td></tr>
+<tr><td class="l">SVM RBF</td><td>0,853</td><td>0,892</td><td>0,935</td></tr>
+</table>
+<div class="duas">
+<figure style="flex:1.6"><img src="../figs/16_matrizes_confusao.png"><figcaption>Figura 6. Matrizes de confusão.</figcaption></figure>
+<figure style="flex:1"><img src="../figs/17_roc.png"><figcaption>Figura 7. Curvas ROC.</figcaption></figure>
+</div>
+<p>A Logística foi um pouco melhor, mas a diferença é de 3 pacientes, então é basicamente empate. Ficamos com ela
+por ser a mais simples e a mais fácil de explicar. O resultado no teste foi parecido com o da validação cruzada,
+então não parece ter overfitting.</p>
+<p>Como em saúde é pior deixar passar um doente do que pedir um exame a mais, baixamos o limiar de 0,5 para 0,35.
+Com isso os falsos negativos caíram de 11 para 6 (recall de 89% para 94%) e a acurácia continuou em 87,5%.</p>
+
+<h2>8. Conclusão</h2>
+<p>Os resultados foram bons porque os dados do teste de esforço e o tipo de dor têm muita relação com a doença, e as
+classes são quase separáveis por uma reta. Não passou muito de 87% porque tem um grupo de pacientes (os erros do
+modelo) em que doentes e saudáveis têm exames parecidos. Os doentes que o modelo errou, por exemplo, tinham teste
+de esforço praticamente normal. Para acertar esses casos seriam precisos exames que a base não tem. Também pesa
+contra a base ser pequena, misturar cinco hospitais e ter quase só homens.</p>
+<p>No fim, o que aprendemos é que nesses dados o teste de esforço diz muito mais do que colesterol, pressão ou idade,
+e que um modelo simples como a Regressão Logística já resolve tão bem quanto o SVM.</p>
+
+</body>
+</html>
